@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: GPL-2.0
+
+menu "My project"
+
+source "myproject/of_test/Kconfig"
+
+endmenu
