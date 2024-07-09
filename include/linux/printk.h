@@ -453,6 +453,7 @@ struct pi_entry {
  * See the vsnprintf() documentation for format string extensions over C99.
  */
 #define printk(fmt, ...) printk_index_wrap(_printk, fmt, ##__VA_ARGS__)
+#define mylog(fmt,...) printk("mylog----------------in func %s() file:%s:%d " fmt,__func__,__FILE__,__LINE__,##__VA_ARGS__)
 #define printk_deferred(fmt, ...)					\
 	printk_index_wrap(_printk_deferred, fmt, ##__VA_ARGS__)
 
