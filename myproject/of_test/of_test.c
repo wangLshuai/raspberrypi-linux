@@ -1,3 +1,4 @@
+#include "linux/of_platform.h"
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/of.h>
@@ -11,6 +12,47 @@ int process_platform_device(struct device *device, void *data)
 	printk("pdev->name:%s\n", pdev->name);
 
 	return 0;
+}
+
+void foreach_device(struct device_node *np)
+{
+	struct device_node *child;
+	int count, i;
+	const __be32 *addrp;
+	u64 size;
+	unsigned int flags;
+
+	printk("name:%s\n", np->full_name);
+	count = of_address_count(np);
+	for (i = 0; i < count; i++) {
+		addrp = __of_get_address(np, i, -1, &size, &flags);
+		printk("%d address\n", i);
+		if (flags & IORESOURCE_MEM) {
+			printk("IORESOURCE_MEM\n");
+		}
+		if (flags & IORESOURCE_IO) {
+			printk("IORESOURCE_IO\n");
+		}
+		if (flags & IORESOURCE_REG) {
+			printk("IORESOURCE_REG\n");
+		}
+		if (flags & IORESOURCE_IRQ) {
+			printk("IORESOURCE_IRQ");
+		}
+		if (flags & IORESOURCE_DMA) {
+			printk("IORESOURCE_DMA\n");
+		}
+		if (flags & IORESOURCE_CACHEABLE) {
+			printk("IORESOURCE_CACHEABLE\n");
+		}
+		if (flags & IORESOURCE_BUS) {
+			printk("IORESOURCE_BUS\n");
+		}
+	}
+
+	for_each_child_of_node(np, child) {
+		foreach_device(child);
+	}
 }
 static int __init of_test_init(void)
 {
@@ -92,7 +134,8 @@ static int __init of_test_init(void)
 		}
 	}
 
-	dev = bus_find_device_by_name(&platform_bus_type, NULL, "fe200000.gpiomem");
+	dev = bus_find_device_by_name(&platform_bus_type, NULL,
+				      "fe200000.gpiomem");
 	if (dev != NULL) {
 		pdev = to_platform_device(dev);
 		printk("find %s  platform device\n", pdev->name);
@@ -104,11 +147,14 @@ static int __init of_test_init(void)
 		}
 		for (i = 0; i < len; i++) {
 			printk("resource %d res->name:%s res->start:%llx ,res->end:%llx\n",
-			       i, pdev->resource[i].name,pdev->resource[i].start,
-			       pdev->resource[i].end);
+			       i, pdev->resource[i].name,
+			       pdev->resource[i].start, pdev->resource[i].end);
 		}
 	}
 
+	printk("address flags\n");
+	np = of_find_node_by_path("/");
+	foreach_device(np);
 	return 0;
 }
 
