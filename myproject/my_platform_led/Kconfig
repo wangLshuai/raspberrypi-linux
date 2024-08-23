@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0
+
+config MY_PLATFORM_LED
+    tristate "MY_PLATFORM_LED"

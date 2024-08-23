@@ -151,13 +151,13 @@
 };
 
 &led_act {
-	gpios = <&gpio 42 GPIO_ACTIVE_HIGH>;
+	gpios = <&gpio 21 GPIO_ACTIVE_HIGH>;
 };
 
 &leds {
 	led_pwr: led-pwr {
 		label = "PWR";
-		gpios = <&expgpio 2 GPIO_ACTIVE_LOW>;
+		gpios = <&gpio 20 GPIO_ACTIVE_HIGH>;
 		default-state = "keep";
 		linux,default-trigger = "default-on";
 	};
@@ -434,12 +434,12 @@
 };
 
 &led_act {
-	default-state = "off";
+	default-state = "on";
 	linux,default-trigger = "mmc0";
 };
 
 &led_pwr {
-	default-state = "off";
+	default-state = "on";
 };
 
 &pwm1 {

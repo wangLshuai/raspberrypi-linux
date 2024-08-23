@@ -6,4 +6,6 @@ source "myproject/of_test/Kconfig"
 
 source "myproject/my_led/Kconfig"
 
+source "myproject/my_platform_led/Kconfig"
+
 endmenu
