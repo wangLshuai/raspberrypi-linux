@@ -407,6 +407,10 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&i2c1_pins>;
 	clock-frequency = <100000>;
+	sht20@40 {
+		compatible = "sht20";
+		reg = <0x40>;
+	};
 };
 
 &i2s {

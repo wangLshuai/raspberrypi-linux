@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0
+
+config I2C_SHT2x
+    tristate "I2C_SHT2x"

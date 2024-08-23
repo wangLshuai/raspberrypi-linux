@@ -4,4 +4,6 @@ menu "My project"
 
 source "myproject/of_test/Kconfig"
 
+source "myproject/i2c-sht2x/Kconfig"
+
 endmenu
