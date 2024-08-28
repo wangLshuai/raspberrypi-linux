@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0
+
+config MYI2C_CONTROLLER_BCM2711
+    tristate "MYI2C_CONTROLLER_BCM2711"

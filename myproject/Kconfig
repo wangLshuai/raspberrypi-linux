@@ -6,4 +6,6 @@ source "myproject/of_test/Kconfig"
 
 source "myproject/i2c-sht2x/Kconfig"
 
+source "myproject/myi2c-controller-bcm2711/Kconfig
+
 endmenu

@@ -397,6 +397,11 @@
 		brcm,function = <BCM2835_FSEL_ALT5>; /* alt5=UART1 */
 		brcm,pull = <0 2 2 0>;
 	};
+	i2c1_sleep_pins: i2c1_sleep_pins {
+		brcm,pins = <2 3>;
+		brcm,function = <BCM2835_FSEL_GPIO_IN>;
+		brcm,pull = <BCM2835_PUD_OFF>;
+	};
 };
 
 &i2c0if {
@@ -404,8 +409,9 @@
 };
 
 &i2c1 {
-	pinctrl-names = "default";
+	pinctrl-names = "default\0sleep";
 	pinctrl-0 = <&i2c1_pins>;
+	pinctrl-1 = <&i2c1_sleep_pins>;
 	clock-frequency = <100000>;
 	sht20@40 {
 		compatible = "sht20";
