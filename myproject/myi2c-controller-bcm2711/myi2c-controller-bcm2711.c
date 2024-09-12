@@ -60,8 +60,10 @@ struct i2c_controller {
 	struct i2c_adapter adap;
 	struct clk_hw i2c_bus_hw_clk;
 	int irq;
-	struct completion rw_completion;
+	u8 *msg_end;
+	u32 len;
 	struct completion done;
+	u32 frequency;
 	void *reg;
 };
 
@@ -69,88 +71,47 @@ static int transfer_msg(struct i2c_msg *msg, struct i2c_controller *i2c_ctrl)
 {
 	iowrite32(msg->addr, i2c_ctrl->reg + I2C_ADDR_REG);
 	iowrite32(msg->len, i2c_ctrl->reg + I2C_DLEN_REG);
-	printk("msg len:%d\n", msg->len);
+	i2c_ctrl->msg_end = msg->buf + msg->len;
+	i2c_ctrl->len = msg->len;
 	if (msg->flags & I2C_M_RD) {
 		printk("start read %d bytes\n", msg->len);
+
 		iowrite32(C_EN_BIT | C_START_BIT | C_READ_BIT | C_INTD_BIT |
 				  C_INTR_BIT,
 			  i2c_ctrl->reg + I2C_CONTROL_REG);
-		int i = 0;
-		while (i < msg->len) {
-			u32 status = ioread32(i2c_ctrl->reg + I2C_STATUS_REG);
-			if (status & S_RXD_BIT) {
-				msg->buf[i] =
-					ioread32(i2c_ctrl->reg + I2C_FIFO_REG);
-				printk("read a byte:%x\n", msg->buf[i]);
-				i++;
-			} else {
-				if (msg->len - i >= 12) {
-					if (!wait_for_completion_timeout(
-						    &i2c_ctrl->rw_completion,
-						    msecs_to_jiffies(100))) {
-						printk("timeout\n");
-						break;
-					}
-				} else {
-					if (!wait_for_completion_timeout(
-						    &i2c_ctrl->done,
-						    msecs_to_jiffies(100))) {
-						printk("timeout\n");
-						break;
-					}
-				}
-			}
-		}
 
 	} else {
+		printk("start write %d bytes\n", msg->len);
 		iowrite32((~C_READ_BIT) &
 				  (C_EN_BIT | C_CLEAR_BIT | C_START_BIT |
 				   C_INTD_BIT | C_INTT_BIT),
 			  i2c_ctrl->reg + I2C_CONTROL_REG);
-
-		int i = 0;
-		while (i < msg->len) {
-			u32 status = ioread32(i2c_ctrl->reg + I2C_STATUS_REG);
-			if (status & S_TXD_BIT) {
-				printk("write a byte:%x\n", msg->buf[i]);
-				iowrite32(msg->buf[i],
-					  i2c_ctrl->reg + I2C_FIFO_REG);
-				printk("writed a byte:%x\n", msg->buf[i]);
-				i++;
-			} else {
-				if (!wait_for_completion_timeout(
-					    &i2c_ctrl->rw_completion,
-					    msecs_to_jiffies(100))) {
-					printk("timeout\n");
-					break;
-				}
-			}
-		}
-
-		printk("wait tx complete\n");
-		u32 status = ioread32(i2c_ctrl->reg + I2C_STATUS_REG);
-		if (status & S_TA_BIT) {
-			if (!wait_for_completion_timeout(
-				    &i2c_ctrl->done, msecs_to_jiffies(100))) {
-				pr_err("wait tx complete timeout\n");
-			}
-
-		} else {
-			init_completion(&i2c_ctrl->rw_completion);
-		}
 	}
 
-	iowrite32(C_CLEAR_BIT, i2c_ctrl->reg + I2C_CONTROL_REG);
+	if (!wait_for_completion_timeout(&i2c_ctrl->done,
+					 i2c_ctrl->adap.timeout)) {
+		pr_err("wait msg complete timeout\n");
+		goto err;
+	}
+
+	if (i2c_ctrl->len)
+		goto err;
+
 	return 0;
+err:
+	iowrite32(C_CLEAR_BIT & (!C_EN_BIT), i2c_ctrl->reg + I2C_CONTROL_REG);
+	return -1;
 }
 static int i2c_controller_master_xfer(struct i2c_adapter *adap,
 				      struct i2c_msg *msgs, int num)
 {
 	struct i2c_controller *i2c_controller =
 		container_of(adap, struct i2c_controller, adap);
+	reinit_completion(&i2c_controller->done);
 	iowrite32(C_CLEAR_BIT, i2c_controller->reg + I2C_CONTROL_REG);
 	for (int i = 0; i < num; i++) {
-		transfer_msg(&msgs[i], i2c_controller);
+		if (transfer_msg(&msgs[i], i2c_controller))
+			return i;
 	}
 	return num;
 }
@@ -228,32 +189,59 @@ static irqreturn_t i2c_irq_handler(int irq, void *data)
 {
 	struct i2c_controller *i2c_controller = data;
 	u32 status = ioread32(i2c_controller->reg + I2C_STATUS_REG);
-	u32 value = ioread32(i2c_controller->reg + I2C_CONTROL_REG);
-	printk("status:0x%x value:0x%x", status & 0xffff, value & 0xffff);
-	if (status & S_DONE_BIT) {
-		printk("done\n");
-		iowrite32(S_DONE_BIT, i2c_controller->reg + I2C_STATUS_REG);
-		complete(&i2c_controller->done);
-	}
-	if ((status & S_RXR_BIT) || (status & S_TXW_BIT)) {
-		printk("irq rw\n");
-		status = ioread32(i2c_controller->reg + I2C_DLEN_REG);
-		printk("len:%u\n", status);
-		complete(&i2c_controller->rw_completion);
-
-		// ?????????? bug
-		// iowrite32(C_CLEAR_BIT, i2c_controller->reg + I2C_CONTROL_REG);
-	}
 
 	if (status & S_CLKT_BIT) {
 		iowrite32(S_CLKT_BIT, i2c_controller->reg + I2C_STATUS_REG);
 		pr_err("CLKT\n");
+		goto complete;
 	}
 	if (status & S_ERR_BIT) {
 		iowrite32(S_ERR_BIT, i2c_controller->reg + I2C_STATUS_REG);
 		pr_err("error\n");
+		goto complete;
+	}
+	if (status & S_DONE_BIT) {
+		printk("done\n");
+
+		while ((status & S_RXD_BIT) && i2c_controller->len) {
+			*(i2c_controller->msg_end - i2c_controller->len) =
+				ioread32(i2c_controller->reg + I2C_FIFO_REG);
+			i2c_controller->len--;
+			status = ioread32(i2c_controller->reg + I2C_STATUS_REG);
+		}
+		goto complete;
+	}
+	if ((status & S_RXR_BIT)) {
+		printk("irq RXR\n");
+		while ((status & S_RXD_BIT) && i2c_controller->len) {
+			*(i2c_controller->msg_end - i2c_controller->len) =
+				ioread32(i2c_controller->reg + I2C_FIFO_REG);
+
+			i2c_controller->len--;
+			status = ioread32(i2c_controller->reg + I2C_STATUS_REG);
+		}
 	}
 
+	if (status & S_TXW_BIT) {
+		printk("irq TXW\n");
+
+		while (i2c_controller->len) {
+			iowrite32(*(i2c_controller->msg_end -
+				    i2c_controller->len),
+				  i2c_controller->reg + I2C_FIFO_REG);
+			i2c_controller->len--;
+			if (!(ioread32(i2c_controller->reg + I2C_STATUS_REG) &
+			      S_TXD_BIT)) {
+				return IRQ_HANDLED;
+			}
+		}
+	}
+
+	return IRQ_HANDLED;
+complete:
+	iowrite32(S_DONE_BIT | S_CLKT_BIT | S_DONE_BIT,
+		  i2c_controller->reg + I2C_STATUS_REG);
+	complete(&i2c_controller->done);
 	return IRQ_HANDLED;
 }
 static int i2c_controller_probe(struct platform_device *pdev)
@@ -272,7 +260,6 @@ static int i2c_controller_probe(struct platform_device *pdev)
 	i2c_controller->adap.algo = &algo;
 	i2c_controller->adap.dev.parent = &pdev->dev;
 	i2c_controller->adap.dev.of_node = pdev->dev.of_node;
-	init_completion(&i2c_controller->rw_completion);
 	init_completion(&i2c_controller->done);
 
 	struct resource *reg = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -309,6 +296,7 @@ static int i2c_controller_probe(struct platform_device *pdev)
 		bus_clk_rate = I2C_MAX_STANDARD_MODE_FREQ;
 	}
 
+	i2c_controller->frequency = bus_clk_rate;
 	mylog("clk_set_rate_exclusive\n");
 	ret = clk_set_rate_exclusive(i2c_controller->i2c_bus_hw_clk.clk,
 				     bus_clk_rate);
